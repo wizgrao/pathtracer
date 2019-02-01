@@ -101,9 +101,9 @@ private:
     // Fill the subpixel at i,j with the Color c
     void fill_color(int i, int j, Color c) {
       PixelColorStorage &p = sub_pixels[i][j];
-      // Part 1: Overwrite PixelColorStorage p using Color c.
-      //         Pay attention to different data types.
-      return;
+      p[0] = (unsigned char) (c.r*255.0);
+      p[1] = (unsigned char) (c.g*255.0);
+      p[2] = (unsigned char) (c.b*255.0);
     }
 
     void fill_pixel(Color c) {
