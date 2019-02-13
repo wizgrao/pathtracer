@@ -535,46 +535,65 @@ namespace CGL {
         // Part 4: Add barycentric coordinates and use tri->color for shading when available.
         // Part 5: Fill in the SampleParams struct and pass it to the tri->color function.
         // Part 6: Pass in correct barycentric differentials to tri->color for mipmapping.
-        x0 -= .5;
-        x1 -= .5;
-        x2 -= .5;
-        y0 -= .5;
-        y1 -= .5;
-        y2 -= .5;
+        x0 = (float) (x0*samplebuffer[0][0].samples_per_side - .5);
+        x1 = (float) (x1*samplebuffer[0][0].samples_per_side - .5);
+        x2 = (float) (x2*samplebuffer[0][0].samples_per_side - .5);
+        y0 = (float) (y0*samplebuffer[0][0].samples_per_side - .5);
+        y1 = (float) (y1*samplebuffer[0][0].samples_per_side - .5);
+        y2 = (float) (y2*samplebuffer[0][0].samples_per_side - .5);
 
-        int minx = (int) min(min(x0, x1),x2);
-        int miny = (int) min(min(y0, y1),y2);
-        int maxx = (int) ceil(max(max(x0, x1),x2));
-        int maxy = (int) ceil(max(max(y0, y1),y2));
+        int minx = (int) min(min(x0, x1), x2) -1;
+        int miny = (int) min(min(y0, y1), y2) - 1;
+        int maxx = (int) ceil(max(max(x0, x1), x2)) + 1;
+        int maxy = (int) ceil(max(max(y0, y1), y2)) + 1;
+
+        minx = max(minx, 0);
+        miny = max(miny, 0);
+        maxx = min(maxx, (int)(width*samplebuffer[0][0].samples_per_side-1));
+        maxy = min(maxy, (int)(height*samplebuffer[0][0].samples_per_side-1));
 
         float n0x = y1 - y0;
         float n0y = x0 - x1;
-        if ((x2 - x0) * n0x + (y2 - y0) * n0y < 0) {
-            n0x *= -1;
-            n0y *= -1;
-        }
+        float scale = (x2 - x0) * n0x + (y2 - y0) * n0y;
+        n0x /= scale;
+        n0y /= scale;
+
 
 
         float n1x = y2 - y1;
         float n1y = x1 - x2;
-        if ((x0 - x1) * n1x + (y0 - y1) * n1y < 0) {
-            n1x *= -1;
-            n1y *= -1;
-        }
+        scale = ((x0 - x1) * n1x + (y0 - y1) * n1y);
+        n1x /= scale;
+        n1y /= scale;
 
         float n2x = y0 - y2;
         float n2y = x2 - x0;
-        if ((x1 - x2) * n2x + (y1 - y2) * n2y < 0) {
-            n2x *= -1;
-            n2y *= -1;
-        }
-        float c0 = -n0x*x0 - n0y*y0;
-        float c1 = -n1x*x1 - n1y*y1;
-        float c2 = -n2x*x2 - n2y*y2;
-        for (int x = minx; x < maxx; x++) {
-            for (int y = miny; y < maxy; y++) {
-                if ((x * n0x + y * n0y + c0 >= 0) && (x * n1x + y * n1y + c1 >= 0) && (x * n2x + y * n2y + c2 >= 0)) {
-                    samplebuffer[y][x].fill_pixel(color);
+        scale =  ((x1 - x2) * n2x + (y1 - y2) * n2y);
+        n2x /= scale;
+        n2y /= scale;
+
+        float c0 = -n0x * x0 - n0y * y0;
+        float c1 = -n1x * x1 - n1y * y1;
+        float c2 = -n2x * x2 - n2y * y2;
+
+        float b0, b1, b2;
+        int sps = (int)samplebuffer[0][0].samples_per_side;
+        for (int y = miny; y < maxy; y++) {
+            for (int x = minx; x < maxx; x++) {
+                b0 = x * n0x + y * n0y + c0;
+                b1 = x * n1x + y * n1y + c1;
+                b2 = x * n2x + y * n2y + c2;
+                if (b0 >= 0 && b1 >= 0 && b2 >= 0) {
+                    //printf("%f %f %f %f\n", b0, b1, b2, b1 + b2 + b0);
+                    if (tri) {
+                        SampleParams s = SampleParams{};
+                        s.psm = psm;
+                        s.lsm = lsm;
+                        samplebuffer[y/sps][x/sps].fill_color(y%sps, x%sps, tri->color(Vector3D(b1, b2, b0),
+                                Vector3D(n1x, n2x, n0x), Vector3D(n1y, n2y, n0y), s));
+                    } else {
+                        samplebuffer[y / sps][x / sps].fill_color(y % sps, x % sps, color);
+                    }
                 }
             }
         }

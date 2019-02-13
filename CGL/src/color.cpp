@@ -13,6 +13,8 @@ namespace CGL {
 const Color Color::White  = Color(1,1,1);
 const Color Color::Black  = Color(0,0,0);
 
+
+
 Color::Color( const unsigned char* arr ) {
   float inv = 1.0 / 255.0;
   r = arr[0] * inv;

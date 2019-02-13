@@ -113,7 +113,14 @@ private:
     }
 
     Color get_pixel_color() {
-      return Color(sub_pixels[0][0].data());
+      auto sub_pixel_num = samples_per_side*samples_per_side;
+      Color ret(0,0,0);
+      for (int i = 0; i < samples_per_side; i++) {
+          for (int j = 0; j < samples_per_side; j++) {
+              ret += Color(sub_pixels[i][j].data())*(1.0/sub_pixel_num);
+          }
+      }
+      return ret;
       // Part 2: Implement get_pixel_color() for supersampling.
     }
     
