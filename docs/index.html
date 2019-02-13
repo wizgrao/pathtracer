@@ -1,23 +1,28 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
-<style>
-  body {
-    padding: 100px;
-    width: 1000px;
-    margin: auto;
-    text-align: left;
-    font-weight: 300;
-    font-family: 'Open Sans', sans-serif;
-    color: #121212;
-  }
-  h1, h2, h3, h4 {
-    font-family: 'Source Sans Pro', sans-serif;
-  }
-</style>
-<title>CS 184 Rasterizer</title>
-<meta http-equiv="content-type" content="text/html; charset=utf-8" />
-<link href="https://fonts.googleapis.com/css?family=Open+Sans|Source+Sans+Pro" rel="stylesheet">
+    <style>
+        body {
+            padding: 100px;
+            width: 1000px;
+            margin: auto;
+            text-align: left;
+            font-weight: 300;
+            font-family: 'Open Sans', sans-serif;
+            color: #121212;
+        }
+
+        h1, h2, h3, h4 {
+            font-family: 'Source Sans Pro', sans-serif;
+        }
+    </style>
+    <title>CS 184 Rasterizer</title>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans|Source+Sans+Pro" rel="stylesheet">
+    <script type="text/javascript" async
+            src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"
+            async></script>
+
 </head>
 
 
@@ -25,72 +30,233 @@
 
 <h1 align="middle">CS 184: Computer Graphics and Imaging, Spring 2019</h1>
 <h1 align="middle">Project 1: Rasterizer</h1>
-<h2 align="middle">YOUR NAME, CS184-??</h2>
+<h2 align="middle">Gaurav Rao, CS184-afi</h2>
 
 <br><br>
 
 <div>
 
-<h2 align="middle">Overview</h2>
-<p>Give a high-level overview of what you implemented in this project. Think about what you've built as a whole. Share your thoughts on what interesting things you've learned from completing the project.</p>
+    <h2 align="middle">Overview</h2>
+    <p>
+        In this project, I implemented a triangle rasterizer that implements anti aliasing, transforms, and texture
+        mapping with nearest, bilinear, and trilinear sampling.
+        The biggest takeaway for me was dealing with sampling artifacts. I found it surprising that getting the bulk of
+        the information on the screen was relatively easy.
+        Most of the work, however, came from reducing jaggies, sampling artifacts, etc. Most of the project below will
+        focus on how these are minimized.
+    </p>
 
-<h2 align="middle">Section I: Rasterization</h2>
+    <h2 align="middle">Section I: Rasterization</h2>
 
-<h3 align="middle">Part 1: Rasterizing single-color triangles</h3>
+    <h3 align="middle">Part 1: Rasterizing single-color triangles</h3>
 
-<p>Here is an example 2x2 gridlike structure using an HTML table. Each <b>tr</b> is a row and each <b>td</b> is a column in that row. You might find this useful for framing and showing your result images in an organized fashion.</p>
+    <p>
+        To rasterize triangles, we construct equations for the lines in each triangle, test whether each point is on the
+        correct side of each line, then color the pixel with the triangle color if it is.
+        So, first we have to construct the equation of the line. Recall that a line between \( ( x_0, y_0 ) \) and \( (
+        x_1, y_1 ) ) \) can be represented in the form \( a ( x - x_0 ) + b ( y - y_0 ) \),
+        where the vector \( \langle a, b \rangle \) represents the normal vector to the line, which can be calculated by
+        \( \langle y_0 - y_1, x_1 - x_0 \rangle \).
+        We can then simplify the line equation to \(ax + by + c = 0 \). Note that when we plug in an arbitrary point
+        into \( ax + by + c \), positive values correspond to one side of the line and
+        negative values correspond to the other side. If we take the third point and plug it in, we get the side of the
+        line that we want. We can precompute this value and divide the constants of the
+        equation by it. Then, positive values correspond to the correct side of the triangle. This also corresponds to
+        the barycentric coordinate, and will be important later.
+    </p>
 
-<div align="middle">
-  <table style="width=100%">
-    <tr>
-      <td>
-        <img src="images/image1.png" align="middle" width="400px"/>
-        <figcaption align="middle">Caption goes here.</figcaption>
-      </td>
-      <td>
-        <img src="images/image2.png" align="middle" width="400px"/>
-        <figcaption align="middle">Caption goes here.</figcaption>
-      </td>
-    </tr>
-    <br>
-    <tr>
-      <td>
-        <img src="images/image3.png" align="middle" width="400px"/>
-        <figcaption align="middle">Caption goes here.</figcaption>
-      </td>
-      <td>
-        <img src="images/image4.png" align="middle" width="400px"/>
-        <figcaption align="middle">Caption goes here.</figcaption>
-      </td>
-    </tr>
-  </table>
+    <div align="middle">
+        <img src="images/p1.png" width="400px">
+        <p>Here we see triangles being rendered and a close up of the intersection of two lines in the blue triangle. We
+            notice the line is jagged, which will be resolved later with antialiasing.</p>
+    </div>
+    <p>My algorithm is efficient since it only checks the points in the bounding box of the triangle. I also precomputed
+        the line equations for each triangle, meaning that the number of arithmetic
+        operations is small compared to trying to compute everything on the fly. I also noticed that we can store the
+        value for \(ax + bx + c \). Every time we move a pixel to the right we find the new value by adding
+        \( a \), and for every pixel down we can add \( b \). While this led to a performance increased, I noticed that
+        this led to some floating point precision issues, and edges of triangles would some times not render
+        properly.</p>
+
+
+    <h3 align="middle">Part 2: Antialiasing triangles</h3>
+    Supersampling is a way to alleviate the jagged angles we see above. Essentially, we try to remove the higher
+    frequencies in the image before sampling. This can be approximated by convolving the image
+    with a box filter. We can try to achieve this by just sampling many points around the pixel, and averaging them
+    together. I implemented this by rendering a higher resolution image, then averaging pixels together to achieve the
+    desired result. This involves scaling all of the triangles in the screen space by
+    the antialiasing factor, calculating each subpixel value, and then averaging out each pixel's subpixel value.
+    <div align="middle">
+        <table style="width: 100%">
+            <tr>
+                <td>
+                    <img src="images/aa1.png" width="300px">
+                </td>
+                <td>
+                    <img src="images/aa2.png" width="300px">
+                </td>
+                <td>
+                    <img src="images/aa3.png" width="300px">
+                </td>
+            </tr>
+        </table>
+        <p>
+            We can see the effects of antialiasing. The leftmost image is without any antialiasing, the middle has 4x
+            antialiasing, and the rightmost one with 16x antialiasing.
+        </p>
+    </div>
+    <h3 align="middle">Part 3: Transforms</h3>
+    I implemented transformations as well. Affine transformations in two dimensions can be represented as linear
+    transformations on an affine plane in three dimensions, so we implemented transformations as 3 dimensional matrices
+    that can be composed
+    through matrix multiplication.
+    <div align="middle">
+        <table style="width: 100%">
+            <tr>
+                <td>
+                    <img src="images/t1.png" width="400px">
+                </td>
+                <td>
+                    <img src="images/t2.png" width="400px">
+                </td>
+            </tr>
+        </table>
+        <p>
+            We can see the effects of rotating the arm polygon by 45 degrees to simulate waving.
+        </p>
+    </div>
+
+
+    <h2 align="middle">Section II: Sampling</h2>
+
+    <h3 align="middle">Part 4: Barycentric coordinates</h3>
+    <p>
+        Barycentric coordinates are a way of expressing points in a triangle in terms of how close they are to each of
+        the points. So, \( ( 1, 0, 0 ) \) corresponds to the first point on the triangle, \( ( 0, 1, 0 ) \)
+        would mean the second point, \( ( \frac{1}{3}, \frac{1}{3}, \frac{1}{3} ) \) the middle of the triangle etc.
+        Note that the some of the coordinates always equals one, so we can use this for weighted sums to interpolate
+        between values.
+        These values can be colors, normal vectors, texture coordinates, etc.</p>
+    <div align="middle"><img src="images/bary.png" width="400px"></div>
+    <p>This is an example of color being interpolated through barycentric coordinates. The amount of red corresponds to
+        the first coordinate, blue the second coordinate, green the third coordinate.
+    </p>
+    <div align="middle"><img src="images/bary2.png" width="400px">
+        <p>An example of an image that can be produced using this technique</p></div>
+    <h3 align="middle">Part 5: "Pixel sampling" for texture mapping</h3>
+    <p>
+        Pixel sampling is the technique of finding the color of a pixel in screen space based on an underlying texture
+        on some sort of polygon. So essentially, we're trying to map an image onto the screen when the pixels may not
+        align nicely.
+        I implemented it by finding the barycentric coordinate of the point in the triangle we want to sample. We then
+        use interpolation to find the appropriate texture coordinate. If this doesn't not align perfectly with an actual
+        pixel we have to either interpolate based on the pixels around it, or just use the pixel closest to it. The
+        first I implemented using bilinear filtering. Essentially, we take the four pixels around the point we are
+        sampling. We find the top interpolated color and the bottom interpolated
+        color by using the fractional portion of the x coordinate. We then use the fractional part of the y coordinate
+        to interpolate between these two values to find the final value.</p>
+    <div style="width: 100%;">
+        <table style="width: 100%">
+            <tr>
+                <td>
+                    <img src="images/near.png" width="400px">
+                </td>
+                <td>
+                    <img src="images/nearalias.png" width="400px">
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <img src="images/bilin.png" width="400px">
+                </td>
+                <td>
+                    <img src="images/bilinalias.png" width="400px">
+                </td>
+            </tr>
+        </table>
+        <p>
+            The top row depicts nearest pixel sampling, the bottom row depicts bilinear sampling. The left side is not
+            supersampled, but the right side is 16x supersampled.
+            We can see that bilinear sampling smooths things out a bit, having a similar effect to antialiasing. This is
+            more apparent in parts of the image with a lot of information. Bilinear texture sampling
+            is a significantly cheaper operation than doing 16x anti-aliasing.
+        </p>
+    </div>
+    <h3 align="middle">Part 6: "Level sampling" with mipmaps for texture mapping</h3>
+    <p>
+        Level sampling addresses the issue of textures being sampled at too low of a rate (ie. the image is
+        undersampled).
+        This causes an aliasing effect. The idea of level sampling is to compute images with a box filter already
+        applied
+        for antialiasing, and then sample from one of these images based on the sample rate.
+        We recusively apply a box filter at sizes of power of two to create a set of images that can be represented at
+        all
+        sampling frequencies. We can then chose by them by taking the approximate footprint of the pixel from the screen
+        space to the texture space,
+        and sampling from the appropriate image. I approached this by taking the coordinates of the pixel to the right
+        and
+        bellow it, map that difference to a barycentric coordinate, then map that to UV coordinates. we then get two
+        vectors, one relating x distance in the screen space to
+        a vector in uv space, and another relating a change in the y direction to a vector in uv space. We take the
+        maximum
+        magnitude of the largest of these vectors and take that to be the size of the "footprint" of a screen space
+        pixel on
+        the uv space. The mip map level just corresponds the the nuber of
+        times we have to apply a 2x2 box filter to ensure the resulting sampling frequency can represent the frequencies
+        in
+        the image. This is just the number of times we have to multiply 1 pixel widths by 2 to get to the footprint
+        size, or
+        \( \log_2 \) of the footprint size,
+        We can either use the nearest whole number to this quantity, or sample linearly from the whole numbers closest
+        above
+        and below.
+    </p>
+    <div style="width: 100%;">
+        <table style="width: 100%">
+            <tr>
+                <td>
+                    <img src="images/zeronear.png" width="300px">
+                </td>
+                <td>
+                    <img src="images/nearnear.png" width="300px">
+                </td>
+                <td>
+                    <img src="images/linnear.png" width="300px">
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <img src="images/zerolin.png" width="300px">
+                </td>
+                <td>
+                    <img src="images/nearlin.png" width="300px">
+                </td>
+                <td>
+                    <img src="images/linlin.png" width="300px">
+                </td>
+            </tr>
+        </table>
+        <p>
+            Top row: nearest pixel sampling <br>
+            Bottom roq: linear pixel sampling <br>
+            Left: Sampling at highest resolution always <br>
+            Middle: Nearest sampling level <br>
+            Right: Linear interpolating sample <br>
+        </p>
+    </div>
+        <p>
+            We can see that towards the edges of the image without level sampling, there are jaggies in both the nearest and interpolating pixel sampling images, though the interpolating pixel sampled
+            sampling image look a little smoother. In the zoomed out picture, level sampling seems to resolve this issue. If pixel peep at the parts of the image where there is a transition between mipmap levels, nearest level sampling creates an artifact.
+            This is why you would want to linearly sample between the levels.
+        </p>
+        <p>
+            There are a lot of performance considerations to be made about these techniques. While nearest level sampling doesn't require many more texture lookups, it does require a little more storage, though only by less than one and a half.
+            Linear interpolating would double the number of texture lookups. However, interpolating levels would double
+            the texture lookups. bilinear pixel sampling is the most lookup expensive, multiplying the number of lookups by four.
+            Overall, modern graphics cards do all of these tasks quite efficiently so the quality increase seems to
+            be worth it.
+        </p>
+    </div>
 </div>
-
-
-<h3 align="middle">Part 2: Antialiasing triangles</h3>
-
-
-
-<h3 align="middle">Part 3: Transforms</h3>
-
-
-
-<h2 align="middle">Section II: Sampling</h2>
-
-<h3 align="middle">Part 4: Barycentric coordinates</h3>
-
-
-<h3 align="middle">Part 5: "Pixel sampling" for texture mapping</h3>
-
-
-<h3 align="middle">Part 6: "Level sampling" with mipmaps for texture mapping</h3>
-
-
-
-<h2 align="middle">Section III: Art Competition</h2>
-<p>If you are not participating in the optional art competition, don't worry about this section!</p>
-
-<h3 align="middle">Part 7: Draw something interesting!</h3>
-
 </body>
 </html>
